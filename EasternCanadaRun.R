@@ -8,13 +8,13 @@ library(sf)
 # =========================================================
 # PATHS
 # =========================================================
-
+basePath <- "~/repositories/Shirin/"
 setPaths(
-  cachePath   = "E:/EasternCanadaLandBase/cache",
-  inputPath   = "E:/EasternCanadaLandBase/inputs",
-  outputPath  = "E:/EasternCanadaLandBase/outputs",
-  modulePath  = "E:/EasternCanadaLandBase/modules",
-  scratchPath = "E:/EasternCanadaLandBase/scratch"
+  cachePath   = file.path(basePath, "cache"),
+  inputPath   = file.path(basePath, "inputs"),
+  outputPath  = file.path(basePath, "outputs"),
+  modulePath  = file.path(basePath, "modules"),
+  scratchPath = file.path(basePath, "scratch")
 )
 
 
