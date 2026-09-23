@@ -21,124 +21,13 @@ setPaths(
 # =========================================================
 # READ NEWFOUNDLAND & LABRADOR BOUNDARIES
 # =========================================================
+nl <- terra::vect(file.path(basePath, "inputs/NL_EB_Poly_50k_Upload.shp"))
 
-nl <- st_read(
-  "D:/BOUNDARIES/NL_EB_Poly_50k_Upload.shp",
-  quiet = TRUE
-)
+# Select only one of them
+nl_gf <- nl[nl$DIST_NAME == "Grand Falls-Windsor - Buchans", ]
 
-nl <- st_make_valid(nl)
-
-
-# =========================================================
-# SELECT NEWFOUNDLAND ISLAND AUTOMATICALLY
-# =========================================================
-# The current YCF_NL layer covers Newfoundland Island,
-# but not Labrador.
-#
-# Newfoundland Island is south of Labrador.
-# We therefore select the southern polygons automatically.
-# =========================================================
-
-nl_ll <- st_transform(nl, 4326)
-
-centroids <- st_point_on_surface(nl_ll)
-coords <- st_coordinates(centroids)
-
-nl_ll$longitude <- coords[, 1]
-nl_ll$latitude  <- coords[, 2]
-
-# Newfoundland Island is approximately south of 52 N
-newfoundlandIsland <- nl_ll[
-  nl_ll$latitude < 52,
-]
-
-if (nrow(newfoundlandIsland) == 0) {
-  stop("Could not identify Newfoundland Island polygons.")
-}
-
-cat(
-  "Newfoundland Island polygons found:",
-  nrow(newfoundlandIsland),
-  "\n"
-)
-
-
-# =========================================================
-# SELECT ONE POLYGON FOR SMALL TEST
-# =========================================================
-
-# Choose a polygon near the middle of Newfoundland Island
-targetLat <- median(newfoundlandIsland$latitude)
-
-i <- which.min(
-  abs(newfoundlandIsland$latitude - targetLat)
-)
-
-testPolygon <- newfoundlandIsland[i, ]
-
-# Return to original CRS
-testPolygon <- st_transform(
-  testPolygon,
-  st_crs(nl)
-)
-
-cat(
-  "Selected district:",
-  testPolygon$DIST_NAME,
-  "\n"
-)
-
-
-# =========================================================
-# CREATE 5 x 5 km TEST PATCH
-# =========================================================
-
-testPoint <- st_point_on_surface(
-  st_union(testPolygon)
-)
-
-xy <- st_coordinates(testPoint)
-
-small_ext <- terra::ext(
-  xy[1] - 2500,
-  xy[1] + 2500,
-  xy[2] - 2500,
-  xy[2] + 2500
-)
-
-small_box <- terra::as.polygons(
-  small_ext,
-  crs = terra::crs(
-    terra::vect(testPolygon)
-  )
-)
-
-small_poly <- terra::intersect(
-  terra::vect(testPolygon),
-  small_box
-)
-
-if (nrow(small_poly) == 0) {
-  stop("The test patch is empty.")
-}
-
-
-# =========================================================
-# CHECK TEST AREA
-# =========================================================
-
-cat("\n====================================\n")
-cat("TEST AREA\n")
-cat("====================================\n")
-
-print(small_poly)
-
-cat("\nExtent:\n")
-print(terra::ext(small_poly))
-
-plot(small_poly)
-
+# Make a 10km buffer around the center of it and project it to WGS 84
+studyArea <- terra::project(terra::buffer(terra::centroids(nl_gf), width=10000), "EPSG:4326")
 
 # =========================================================
 # MODULES
@@ -165,7 +54,7 @@ sim <- simInit(
   modules = modules,
 
   objects = list(
-    studyArea = small_poly
+    studyArea = studyArea
   ),
 
   params = list(
