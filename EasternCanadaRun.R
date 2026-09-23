@@ -45,32 +45,23 @@ modules <- c(
 # =========================================================
 # INIT
 # =========================================================
-
 sim <- simInit(
-
   times = list(
     start = 1,
-    end   = 1
+    end = 1
   ),
-
   modules = modules,
-
   objects = list(
     studyArea = studyArea
   ),
-
   params = list(
-
     EasternCanadaDataPrep = list(
       devMode = FALSE
     ),
-
     RiparianBuffers = list(
       hydroRaster_m = 25
     )
-
   ),
-
   paths = getPaths()
 )
 
