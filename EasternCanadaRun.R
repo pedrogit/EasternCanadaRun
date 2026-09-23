@@ -17,6 +17,8 @@ setPaths(
   scratchPath = file.path(basePath, "scratch")
 )
 
+# Required by prepInputs()/module .inputObjects() when it downloads/caches data.
+options(reproducible.destinationPath = file.path(basePath, "inputs"))
 
 # =========================================================
 # READ NEWFOUNDLAND & LABRADOR BOUNDARIES
