@@ -57,9 +57,9 @@ sim <- simInit(
     studyArea = studyArea
   ),
   params = list(
-    EasternCanadaDataPrep = list(
-      devMode = FALSE
-    ),
+    # EasternCanadaDataPrep = list(
+    #   devMode = FALSE
+    # ),
     RiparianBuffers = list(
       hydroRaster_m = 25
     )
