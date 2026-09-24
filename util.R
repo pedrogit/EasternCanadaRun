@@ -1,9 +1,11 @@
 plotLeaflet <- function(...,
-                       basemap = leaflet::providers$OpenStreetMap,
-                       colors = NULL,
-                       layerNames = NULL,
-                       fillOpacity = 0.2,
-                       weight = 2) {
+                        basemap = leaflet::providers$OpenStreetMap,
+                        colors = NULL,
+                        layerNames = NULL,
+                        fillOpacity = 0.2,
+                        weight = 2,
+                        rasterOpacity = 0.7,
+                        rasterMaxCells = 5e5) {
   exprs <- as.list(substitute(list(...)))[-1L]
   objs <- list(...)
 
@@ -11,7 +13,8 @@ plotLeaflet <- function(...,
     stop("plotLeaflet requires at least one spatial object.")
   }
 
-  if (length(objs) == 1L && is.list(objs[[1]]) && !inherits(objs[[1]], c("SpatVector", "sf", "sfc"))) {
+  if (length(objs) == 1L && is.list(objs[[1]]) &&
+      !inherits(objs[[1]], c("SpatVector", "SpatRaster", "sf", "sfc"))) {
     objs <- objs[[1]]
 
     if (is.null(layerNames)) {
@@ -54,65 +57,154 @@ plotLeaflet <- function(...,
     stop("The number of colors must match the number of spatial objects.")
   }
 
-  x_sf_list <- lapply(objs, function(obj) {
-    x_sf <- if (inherits(obj, "SpatVector")) {
-      sf::st_as_sf(obj)
+  layer_info <- vector("list", length(objs))
+
+  for (i in seq_along(objs)) {
+    obj <- objs[[i]]
+
+    if (inherits(obj, "SpatVector") || inherits(obj, c("sf", "sfc"))) {
+      x_sf <- if (inherits(obj, "SpatVector")) sf::st_as_sf(obj) else obj
+      if (inherits(obj, "SpatVector") && terra::crs(obj) != "") {
+        sf::st_crs(x_sf) <- terra::crs(obj)
+      }
+
+      crs_x <- sf::st_crs(x_sf)
+      if (!is.na(crs_x$wkt) && !sf::st_is_longlat(x_sf)) {
+        x_sf <- sf::st_transform(x_sf, 4326)
+      }
+
+      layer_info[[i]] <- list(type = "vector", data = x_sf)
+
+    } else if (inherits(obj, "SpatRaster")) {
+      r <- obj
+      if (terra::crs(r) == "") {
+        stop("SpatRaster layer has no CRS: ", layerNames[i])
+      }
+      if (!terra::is.lonlat(r)) {
+        r <- terra::project(r, "EPSG:4326", method = "near")
+      }
+
+      ncell_original <- terra::ncell(r)
+      if (is.finite(rasterMaxCells) && rasterMaxCells > 0) {
+        while (terra::ncell(r) > rasterMaxCells) {
+          agg_fun <- if (any(terra::is.factor(r))) terra::modal else mean
+          r <- terra::aggregate(r, fact = 2, fun = agg_fun, na.rm = TRUE)
+        }
+      }
+
+      if (terra::ncell(r) < ncell_original) {
+        warning(
+          paste0(
+            "Raster layer ", layerNames[i], " was downsampled from ",
+            format(ncell_original, big.mark = ","), " to ",
+            format(terra::ncell(r), big.mark = ","), " cells before plotting"
+          ),
+          call. = FALSE
+        )
+      }
+
+      layer_info[[i]] <- list(type = "raster", data = r)
+
     } else {
-      obj
+      stop("Unsupported layer class for ", layerNames[i], ".")
     }
-
-    if (inherits(obj, "SpatVector") && terra::crs(obj) != "") {
-      sf::st_crs(x_sf) <- terra::crs(obj)
-    }
-
-    crs_x <- sf::st_crs(x_sf)
-    if (!is.na(crs_x$wkt) && !sf::st_is_longlat(x_sf)) {
-      x_sf <- sf::st_transform(x_sf, 4326)
-    }
-
-    x_sf
-  })
-
-  non_empty <- vapply(x_sf_list, function(x) nrow(x) > 0, logical(1))
-  dropped_layers <- layerNames[!non_empty]
-
-  if (length(dropped_layers) > 0L) {
-    warning(
-      paste0("Empty layer ", dropped_layers, " was not added to the map"),
-      call. = FALSE
-    )
   }
 
-  x_sf_list <- x_sf_list[non_empty]
-  layerNames <- layerNames[non_empty]
-  colors <- colors[non_empty]
+  keep <- rep(TRUE, length(layer_info))
 
-  if (length(x_sf_list) == 0L) {
+  for (i in seq_along(layer_info)) {
+    li <- layer_info[[i]]
+
+    if (identical(li$type, "vector") && nrow(li$data) == 0) {
+      keep[i] <- FALSE
+      warning(paste0("Empty layer ", layerNames[i], " was not added to the map"), call. = FALSE)
+      next
+    }
+
+    if (identical(li$type, "raster")) {
+      e <- terra::ext(li$data)
+      bounds_i <- c(terra::xmin(e), terra::ymin(e), terra::xmax(e), terra::ymax(e))
+      if (!all(is.finite(bounds_i))) {
+        keep[i] <- FALSE
+        warning(paste0("Empty layer ", layerNames[i], " was not added to the map"), call. = FALSE)
+      }
+    }
+  }
+
+  layer_info <- layer_info[keep]
+  layerNames <- layerNames[keep]
+  colors <- colors[keep]
+
+  if (length(layer_info) == 0L) {
     stop("No non-empty layers to plot after filtering.")
   }
 
-  all_bbox <- do.call(rbind, lapply(x_sf_list, sf::st_bbox))
-  bounds <- unname(c(
-    min(all_bbox[, "xmin"], na.rm = TRUE),
-    min(all_bbox[, "ymin"], na.rm = TRUE),
-    max(all_bbox[, "xmax"], na.rm = TRUE),
-    max(all_bbox[, "ymax"], na.rm = TRUE)
-  ))
+  bbox_list <- lapply(layer_info, function(li) {
+    if (identical(li$type, "vector")) {
+      b <- sf::st_bbox(li$data)
+      c(
+        xmin = as.numeric(b["xmin"]),
+        ymin = as.numeric(b["ymin"]),
+        xmax = as.numeric(b["xmax"]),
+        ymax = as.numeric(b["ymax"])
+      )
+    } else {
+      e <- terra::ext(li$data)
+      c(xmin = terra::xmin(e), ymin = terra::ymin(e), xmax = terra::xmax(e), ymax = terra::ymax(e))
+    }
+  })
+
+  xmin_vals <- vapply(bbox_list, function(b) as.numeric(b["xmin"]), numeric(1))
+  ymin_vals <- vapply(bbox_list, function(b) as.numeric(b["ymin"]), numeric(1))
+  xmax_vals <- vapply(bbox_list, function(b) as.numeric(b["xmax"]), numeric(1))
+  ymax_vals <- vapply(bbox_list, function(b) as.numeric(b["ymax"]), numeric(1))
+
+  bounds <- c(
+    min(xmin_vals, na.rm = TRUE),
+    min(ymin_vals, na.rm = TRUE),
+    max(xmax_vals, na.rm = TRUE),
+    max(ymax_vals, na.rm = TRUE)
+  )
 
   map <- leaflet::leaflet() |>
     leaflet::addProviderTiles(basemap)
 
-  for (i in seq_along(x_sf_list)) {
-    map <- map |>
-      leaflet::addPolygons(
-        data = x_sf_list[[i]],
-        group = layerNames[i],
-        color = colors[i],
-        fillColor = colors[i],
-        fillOpacity = fillOpacity,
-        weight = weight,
-        stroke = TRUE
+  for (i in seq_along(layer_info)) {
+    li <- layer_info[[i]]
+
+    if (identical(li$type, "vector")) {
+      map <- map |>
+        leaflet::addPolygons(
+          data = li$data,
+          group = layerNames[i],
+          color = colors[i],
+          fillColor = colors[i],
+          fillOpacity = fillOpacity,
+          weight = weight,
+          stroke = TRUE
+        )
+    } else {
+      mm <- terra::minmax(li$data)
+      rng <- range(mm, na.rm = TRUE)
+      if (!all(is.finite(rng))) {
+        rng <- c(0, 1)
+      }
+
+      pal <- leaflet::colorNumeric(
+        palette = grDevices::hcl.colors(64, "YlOrRd", rev = TRUE),
+        domain = rng,
+        na.color = "transparent"
       )
+
+      map <- map |>
+        leaflet::addRasterImage(
+          x = li$data,
+          colors = pal,
+          opacity = rasterOpacity,
+          group = layerNames[i],
+          project = FALSE
+        )
+    }
   }
 
   map <- map |>
