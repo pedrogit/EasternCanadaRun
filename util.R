@@ -73,12 +73,30 @@ plotLeaflet <- function(...,
     x_sf
   })
 
+  non_empty <- vapply(x_sf_list, function(x) nrow(x) > 0, logical(1))
+  dropped_layers <- layerNames[!non_empty]
+
+  if (length(dropped_layers) > 0L) {
+    warning(
+      paste0("Empty layer ", dropped_layers, " was not added to the map"),
+      call. = FALSE
+    )
+  }
+
+  x_sf_list <- x_sf_list[non_empty]
+  layerNames <- layerNames[non_empty]
+  colors <- colors[non_empty]
+
+  if (length(x_sf_list) == 0L) {
+    stop("No non-empty layers to plot after filtering.")
+  }
+
   all_bbox <- do.call(rbind, lapply(x_sf_list, sf::st_bbox))
   bounds <- unname(c(
-    min(all_bbox[, "xmin"]),
-    min(all_bbox[, "ymin"]),
-    max(all_bbox[, "xmax"]),
-    max(all_bbox[, "ymax"])
+    min(all_bbox[, "xmin"], na.rm = TRUE),
+    min(all_bbox[, "ymin"], na.rm = TRUE),
+    max(all_bbox[, "xmax"], na.rm = TRUE),
+    max(all_bbox[, "ymax"], na.rm = TRUE)
   ))
 
   map <- leaflet::leaflet() |>
@@ -97,10 +115,16 @@ plotLeaflet <- function(...,
       )
   }
 
-  map |>
+  map <- map |>
     leaflet::addLayersControl(
       overlayGroups = layerNames,
       options = leaflet::layersControlOptions(collapsed = FALSE)
-    ) |>
-    leaflet::fitBounds(bounds[1], bounds[2], bounds[3], bounds[4])
+    )
+
+  if (all(is.finite(bounds))) {
+    map <- map |>
+      leaflet::fitBounds(bounds[1], bounds[2], bounds[3], bounds[4])
+  }
+
+  map
 }

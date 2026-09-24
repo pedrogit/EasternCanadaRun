@@ -38,13 +38,11 @@ plotLeaflet(studyArea)
 # =========================================================
 # MODULES
 # =========================================================
-
 modules <- c(
-  "EasternCanadaDataPrep",
-  "RiparianBuffers",
-  "EasternCanadaLandbase"
+  "EasternCanadaDataPrep"
+  #, "RiparianBuffers"
+  #, "EasternCanadaLandbase"
 )
-
 
 # =========================================================
 # INIT
