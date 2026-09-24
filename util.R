@@ -4,6 +4,7 @@ plotLeaflet <- function(...,
                        layerNames = NULL,
                        fillOpacity = 0.2,
                        weight = 2) {
+  exprs <- as.list(substitute(list(...)))[-1L]
   objs <- list(...)
 
   if (length(objs) == 0L) {
@@ -12,12 +13,30 @@ plotLeaflet <- function(...,
 
   if (length(objs) == 1L && is.list(objs[[1]]) && !inherits(objs[[1]], c("SpatVector", "sf", "sfc"))) {
     objs <- objs[[1]]
+
+    if (is.null(layerNames)) {
+      layerNames <- names(objs)
+      if (is.null(layerNames) || any(layerNames == "")) {
+        layerNames <- paste0("Layer ", seq_along(objs))
+      }
+    }
   }
 
   if (is.null(layerNames)) {
     layerNames <- names(objs)
+
     if (is.null(layerNames) || any(layerNames == "")) {
-      layerNames <- paste0("Layer ", seq_along(objs))
+      exprNames <- vapply(exprs, function(e) paste(deparse(e), collapse = ""), character(1))
+      exprNames[exprNames == ""] <- NA_character_
+
+      if (length(exprNames) == length(objs)) {
+        layerNames <- exprNames
+      }
+
+      if (is.null(layerNames) || any(is.na(layerNames) | layerNames == "")) {
+        missing_idx <- which(is.na(layerNames) | layerNames == "")
+        layerNames[missing_idx] <- paste0("Layer ", missing_idx)
+      }
     }
   }
 
