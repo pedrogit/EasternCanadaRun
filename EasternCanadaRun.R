@@ -17,19 +17,23 @@ setPaths(
   scratchPath = file.path(basePath, "scratch")
 )
 
+source(file.path(basePath, "EasternCanadaRun/util.R"))
+
 # Required by prepInputs()/module .inputObjects() when it downloads/caches data.
 options(reproducible.destinationPath = file.path(basePath, "inputs"))
 
 # =========================================================
 # READ NEWFOUNDLAND & LABRADOR BOUNDARIES
 # =========================================================
-nl <- terra::vect(file.path(basePath, "inputs/NL_EB_Poly_50k_Upload.shp"))
+nl <- terra::vect(file.path(basePath, "EasternCanadaRun/data/NL_EB_Poly_50k_Upload.shp"))
 
 # Select only one of them
 nl_gf <- nl[nl$DIST_NAME == "Grand Falls-Windsor - Buchans", ]
 
 # Make a 10km buffer around the center of it and project it to WGS 84
 studyArea <- terra::project(terra::buffer(terra::centroids(nl_gf), width=10000), "EPSG:4326")
+
+plotLeaflet(studyArea)
 
 # =========================================================
 # MODULES
@@ -64,7 +68,6 @@ sim <- simInit(
   ),
   paths = getPaths()
 )
-
 
 # =========================================================
 # RUN
